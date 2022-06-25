@@ -1,0 +1,79 @@
+pipeline {
+    agent any 
+    environment {
+        //once you sign up for Docker hub, use that user_id here
+        registry = "narendra311777/mycode"
+        //- update your credentials ID after creating credentials for connecting to Docker Hub
+        registryCredential = 'docker'
+        dockerImage = ''
+        AWS_ACCOUNT_ID="114120108253"
+        AWS_DEFAULT_REGION="ap-south-1" 
+        IMAGE_REPO_NAME="narendra311777/mycode"
+        //IMAGE_TAG="latest"
+        IMAGE_TAG="$BUILD_NUMBER"
+        TAG= "LATEST"
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+       // EKS_CLUSTER_NAME = "basic-cluster"
+    }
+       
+    stages {
+        stage('Cloning Git') {
+            steps {
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://bitbucket.org/ananthkannan/mypythonrepo']]])       
+                  checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/narendra311777/mycode.git']]])       
+            }
+            
+        }
+    
+    // Building Docker images
+    stage('Building image') {
+      steps{
+        script {
+         // dockerImage = docker.build registry
+         //dockerImage = docker.build("narendra311777/mycode")
+         dockerImage = docker.build registry + ":$BUILD_NUMBER"
+        }
+      }
+    }
+    
+     // Uploading Docker images into Docker Hub
+    stage('Upload Image') {
+     steps{    
+         script {
+            docker.withRegistry( 'https://registry.hub.docker.com', registryCredential ) {
+          //  dockerImage.push()
+           //dockerImage.push("${env.BUILD_NUMBER}")
+           dockerImage.push("latest")
+            }
+        }
+      }
+    }
+    
+     // Uploading Docker images into AWS ECR
+    stage('Pushing to ECR') {
+     steps{  
+         script {
+               //sh " chmod 777 -R /var/run/docker.sock"
+                sh "sudo docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${REPOSITORY_URI}:${TAG}"
+                //sh "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 114120108253.dkr.ecr.ap-south-1.amazonaws.com"
+                sh "sudo aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 114120108253.dkr.ecr.ap-south-1.amazonaws.com"
+                sh "sudo docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${TAG}"
+         }
+        }
+      }
+    
+    // Running Docker container, make sure port 8096 is opened in 
+    //stage('Docker Run') {
+     //steps{
+       //  script {
+       //
+            //dockerImage.run("-p 8096:5000 --rm --name mycode")
+        //    sh "aws eks --region ap-south-1 update-kubeconfig --name $EKS_CLUSTER_NAME"
+       //    // sh "aws eks update-kubeconfig --name basic-cluster --kubeconfig /home/ubuntu/.kube/config"
+          //  sh "kubectl get nodes"
+       //  }
+   //  }
+   // }
+  } 
+  
+}
