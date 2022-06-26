@@ -1,0 +1,80 @@
+pipeline {
+    agent any 
+    environment {
+        //once you sign up for Docker hub, use that user_id here
+        registry = "narendra311777/mycode"
+        //- update your credentials ID after creating credentials for connecting to Docker Hub
+        registyCredential = 'docker'
+        dockerImage = ''
+        AWS_ACCOUNT_ID="114120108253"
+        AWS_DEFAULT_REGION="ap-south-1" 
+        IMAGE_REPO_NAME="narendra311777/mycode"
+        IMAGE_TAG="latest"
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
+        EKS_CLUSTER_NAME = "ram"
+    }
+       
+    stages {
+        stage('Cloning Git') {
+            steps {
+                //checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://bitbucket.org/ananthkannan/mypythonrepo']]])       
+                  checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/narendra311777/mycode.git']]])       
+            }
+            
+        }
+    
+    // Building Docker images
+    stage('Building image') {
+      steps{
+        script {
+         // dockerImage = docker.build registry
+         dockerImage = docker.build("narendra311777/mycode")
+        }
+      }
+    }
+    
+ // Uploading Docker images into Docker Hub
+    stage('Upload Image') {
+     steps{    
+         script {
+            docker.withRegistry( 'https://registry.hub.docker.com', registryCredential ) {
+          //  dockerImage.push()
+           //dockerImage.push("${env.BUILD_NUMBER}")
+           dockerImage.push("latest")
+            }
+        }
+      }
+    }
+   
+     // Uploading Docker images into AWS ECR
+    stage('Pushing to ECR') {
+     steps{  
+         script {
+                sh "sudo docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${REPOSITORY_URI}:$IMAGE_TAG"
+               // sh "sudo aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 371661025153.dkr.ecr.ap-south-1.amazonaws.com"
+               sh "sudo aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 114120108253.dkr.ecr.ap-south-1.amazonaws.com"
+                sh "sudo docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG}"
+         }
+        }
+      }
+    
+   
+   stage('Set current kubectl context') {
+      steps {
+            withAWS(region: 'ap-south-1', credentials: 'AWS') {
+              sh 'kubectl config view'
+              sh 'aws eks --region ap-south-1 update-kubeconfig --name ram'
+              sh 'kubectl config use-context arn:aws:eks:ap-south-1:114120108253:cluster/ram'
+              
+              sh 'kubectl get nodes'
+              sh 'kubectl get pods --all-namespaces'
+              sh 'kubectl delete ns ram'
+              sh 'kubectl create ns ram'
+              sh 'kubectl create -f kdeployment.yaml'
+        }
+      }
+    }
+   
+  }
+}
+  
